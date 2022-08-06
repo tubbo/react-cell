@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react'
-import { DocumentNode } from 'graphql'
+import type { DocumentNode } from 'graphql'
 import { useQuery, ApolloError, QueryResult, QueryHookOptions } from '@apollo/client'
 
 /**
@@ -16,6 +16,9 @@ export type CellComponent<T, P> = (props: CellProps<T, P>) => JSX.Element
  * Props passed to the failure component when an error occurs.
  */
 export interface FailureProps {
+  /**
+   * Error thrown by the Apollo client.
+   */
   error: ApolloError
 }
 
@@ -64,6 +67,18 @@ export interface CellDefinition<T = any, P = any> {
 export type QueryRest<T> = Omit<QueryResult<T>, 'error' | 'loading' | 'data'>
 
 /**
+ * Default `isEmpty()` implementation that is exported from this module so it can be used in your
+ * own implementation.
+ */
+export function isEmpty(data?: any) {
+  if (!data) return false
+
+  const field = data[Object.keys(data)[0]]
+
+  return field == null || (Array.isArray(field) && field.length === 0)
+}
+
+/**
  * Higher-order component for creating new cells.
  */
 export default function createCell<T, P = {}>(
@@ -77,19 +92,18 @@ export default function createCell<T, P = {}>(
 
       return <></>
     },
-    isEmpty = (data?: any) => {
-      if (!data) return false
-
-      const field = data[Object.keys(data)[0]]
-
-      return field == null || (Array.isArray(field) && field.length === 0)
-    },
+    isEmpty: isCellEmpty,
     configure = options => options,
     decorate = data => data
   }: CellDefinition<T, P>
 ) {
+  const isEmptyData = isCellEmpty ?? isEmpty
+
   return (variables: P) => {
-    const options = useMemo<QueryHookOptions<T>>(() => configure({ variables }), [])
+    const options = useMemo<QueryHookOptions<T>>(
+      () => configure({ variables }),
+      [variables],
+    )
     const { error, loading, data: raw, ...rest } = useQuery<T>(query, options)
     const data = useMemo(() => decorate(raw), [raw])
 
@@ -101,7 +115,7 @@ export default function createCell<T, P = {}>(
       return <Loading {...variables} {...rest} />
     }
 
-    if (isEmpty(data)) {
+    if (isEmptyData(data)) {
       return <Empty {...variables} {...rest} />
     }
 
